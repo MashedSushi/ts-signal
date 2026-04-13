@@ -17,5 +17,11 @@
   "bugs": {
     "url": "https://github.com/MashedSushi/ts-signal/issues"
   },
-  "homepage": "https://github.com/MashedSushi/ts-signal#readme"
+  "homepage": "https://github.com/MashedSushi/ts-signal#readme",
+  "dependencies": {
+    "mitata": "^1.0.34"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0"
+  }
 }

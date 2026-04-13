@@ -16,21 +16,23 @@
 export interface Connection {
     disconnect(): void;
 
-    connected: boolean;
+    readonly connected: boolean;
 }
 
-export type Callback<T extends any[] = any[]> = (...args: T) => void;
+export type Callback<T extends unknown[] = []> = (...args: T) => void;
 
-interface Node<T extends any[]> extends Connection {
+interface Node<T extends unknown[]> extends Connection {
     _signal: Signal<T>;
 
     _prev: Node<T> | null;
     _next: Node<T> | null;
 
     _callback: Callback<T>;
+
+    connected: boolean;
 }
 
-export class Signal<T extends any[]> {
+export class Signal<T extends unknown[] = []> {
 
     private _head: Node<T> | null = null;
     private _tail: Node<T> | null = null;
@@ -59,17 +61,15 @@ export class Signal<T extends any[]> {
 
             _callback: callback,
             connected: true,
+
             disconnect() {
                 if (!this.connected) return;
                 this.connected = false;
 
                 const { _signal, _prev, _next } = this;
 
-                if (_prev) _prev._next = _next; 
-                else _signal._tail = _next;
-
-                if (_next) _next._prev = _prev; 
-                else _signal._head = _prev;
+                _prev ? _prev._next = _next : _signal._tail = _next;
+                _next ? _next._prev = _prev : _signal._head = _prev;
             }
         };
 
@@ -98,16 +98,70 @@ export class Signal<T extends any[]> {
     }
 
     /**
-     * Returns a promise that resolves the next time the signal is fired.
+     * Returns a promise that resolves the next time the signal is fired.  
      * The promise resolves with the arguments passed to the signal when it is fired.  
-     * @returns Promise that resolves with the arguments passed to the signal when it is fired.
+     * @param timeout - Optional timeout in milliseconds.  
+     * If provided, the promise will resolve with null if the signal is not fired within the specified time.
+     * @returns Promise that resolves with the arguments passed to the signal when it is fired, or null if the timeout is reached.
      */
-    public wait(): Promise<T> {
+    public wait(timeout?: number): Promise<T | null> {
         return new Promise((resolve) => {
+            let timeoutId: ReturnType<typeof setTimeout> | undefined;
+ 
             const connection = this.connect((...args) => {
                 connection.disconnect();
+
+                if (timeoutId !== undefined) {
+                    clearTimeout(timeoutId);
+                }
+
                 resolve(args);
             });
+
+            if (timeout !== undefined) {
+                timeoutId = setTimeout(() => {
+                    connection.disconnect();
+
+                    resolve(null);
+                }, timeout);
+            }
+        });
+    }
+
+    /**
+     * Returns a promise that resolves the next time the signal is fired and the provided predicate returns true.  
+     * The promise resolves with the arguments passed to the signal when it is fired.
+     * @param predicate - A function that takes the arguments passed to the signal and returns a boolean. The promise resolves when this function returns true.
+     * @param timeout - Optional timeout in milliseconds. If provided, the promise will resolve with null if the signal is not fired within the specified time.
+     * @returns Promise that resolves with the arguments passed to the signal when it is fired and the provided predicate returns true, or null if the timeout is reached.
+     */
+    public waitFor(
+        predicate: (...args: T) => boolean,
+        timeout?: number
+    ): Promise<T | null>
+    {
+        return new Promise((resolve) => {
+            let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+            const connection = this.connect((...args) => {
+                if (predicate(...args)) {
+                    connection.disconnect();
+
+                    if (timeoutId !== undefined) {
+                        clearTimeout(timeoutId);
+                    }
+
+                    resolve(args);
+                }
+            });
+
+            if (timeout !== undefined) {
+                timeoutId = setTimeout(() => {
+                    connection.disconnect();
+
+                    resolve(null);
+                }, timeout);
+            }
         });
     }
 
@@ -152,6 +206,7 @@ export class Signal<T extends any[]> {
             connection.connected = false;
             connection._prev = null;
             connection._next = null;
+
             connection = _next;
         }
 
